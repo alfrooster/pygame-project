@@ -5,7 +5,7 @@ import csv
 
 pygame.init()
 
-SCREEN_WIDTH = 1200
+SCREEN_WIDTH = 800
 SCREEN_HEIGHT = int(SCREEN_WIDTH * 0.75)
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -17,7 +17,7 @@ FPS = 60
 
 #game variables
 GRAVITY = 0.75
-ROWS = 16
+ROWS = 15
 COLS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
 TILE_TYPES = 21
@@ -29,6 +29,16 @@ moving_right = False
 shoot = False
 
 #load images
+pine1_img = pygame.image.load('img/Background/pine1.png').convert_alpha()
+pine2_img = pygame.image.load('img/Background/pine2.png').convert_alpha()
+mountain_img = pygame.image.load('img/Background/mountain.png').convert_alpha()
+sky_img = pygame.image.load('img/Background/sky_cloud.png').convert_alpha()
+#store tiles in a list
+img_list = []
+for x in range(TILE_TYPES):
+    img = pygame.image.load(f'img/Tile/{x}.png')
+    img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+    img_list.append(img)
 bullet_img = pygame.image.load('img/icons/bullet.png').convert_alpha()
 grenade_img = pygame.image.load('img/icons/grenade.png').convert_alpha()
 
@@ -47,8 +57,10 @@ def draw_text(text, font, text_col, x, y):
 
 def draw_bg():
     screen.fill(BG)
-    pygame.draw.line(screen, RED, (0, 500), (SCREEN_WIDTH, 500))
-    pygame.draw.line(screen, RED, (300, 320), (SCREEN_WIDTH, 320))
+    screen.blit(sky_img, (0, 0))
+    screen.blit(mountain_img, (0, SCREEN_HEIGHT - mountain_img.get_height() - 260))
+    screen.blit(pine1_img, (0, SCREEN_HEIGHT - pine1_img.get_height() - 110))
+    screen.blit(pine2_img, (0, SCREEN_HEIGHT - pine2_img.get_height() + 40))
 
 class Creature(pygame.sprite.Sprite):
     def __init__(self, char_type, x, y, scale, speed, health):
@@ -70,7 +82,7 @@ class Creature(pygame.sprite.Sprite):
         self.update_time = pygame.time.get_ticks()
         #ai specific variables
         self.move_counter = 0
-        self.vision = pygame.Rect(0, 0, 300, 20)
+        self.vision = pygame.Rect(0, 0, 300, 120)
         if char_type == "big_monster":
             self.punch = pygame.Rect(0, 0, 100, 70)
         else:
@@ -95,6 +107,8 @@ class Creature(pygame.sprite.Sprite):
         self.img = self.animation_list[self.action][self.frame_index]
         self.rect = self.img.get_rect()
         self.rect.center = (x, y)
+        self.width = self.img.get_width()
+        self.height = self.img.get_height()
 
     def update(self):
         self.update_animation()
@@ -114,37 +128,42 @@ class Creature(pygame.sprite.Sprite):
 
         #assign movement variables if moving left or right
         if moving_left:
-            if self.in_air:
-                dx = -self.speed - 3
-            else:
-                dx = -self.speed
+            dx = -self.speed
             self.flip = True
             self.direction = -1
         if moving_right:
-            if self.in_air:
-                dx = self.speed + 3
-            else:
-                dx = self.speed
+            dx = self.speed
             self.flip = False
             self.direction = 1
         
         if self.jump == True and self.in_air == False:
-            self.vel_y = -13
+            self.vel_y = -12
             self.jump = False
             self.in_air = True
 
-        dy += self.vel_y
-
         #become newton and invent gravity
         self.vel_y += GRAVITY
-        if self.vel_y > 12:
+        if self.vel_y > 11:
             self.vel_y
         dy += self.vel_y
 
-        #check collision with floor
-        if self.rect.bottom + dy > 500:
-            dy = 500 - self.rect.bottom
-            self.in_air = False
+        #check for collision
+        for tile in world.obstacle_list:
+            #check collision in the x direction
+            if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
+                dx = 0
+            #same in y direction
+            if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.width, self.height):
+                #check if below the gound, i.e. jumping
+                if self.vel_y < 0:
+                    self.vel_y = 0
+                    dy = tile[1].bottom - self.rect.top
+                #check if above the ground, i.e. falling
+                elif self.vel_y >= 0:
+                    self.vel_y = 0
+                    self.in_air = False
+                    dy = tile[1].top - self.rect.bottom
+
 
         #update rectangle position
         self.rect.x += dx
@@ -183,15 +202,15 @@ class Creature(pygame.sprite.Sprite):
                 self.idling_counter = 50
             #check if the ai is near the player
             if self.vision.colliderect(player.rect):
-                #stop running and face the player
+                #don't start idling when player is in vision
+                self.idling = False
                 if self.char_type == "ranged_monster":
+                    #start vomiting toward where currently facing
                     if self.vomit_cooldown == 0:
                         self.update_action(4)#4: attack
                         #choose which frame of the animation the attack activates
                         if self.frame_index == 2:
                             self.vomit()
-                    else:
-                        self.update_action(0)
                 else:
                     #run toward player and melee, when in range                    
                     self.punch.center = (self.rect.centerx + 35 * self.direction, self.rect.centery)
@@ -201,9 +220,7 @@ class Creature(pygame.sprite.Sprite):
                             #choose which frame of the animation the attack activates
                             if self.frame_index == 2:
                                 self.melee()
-                        else:
-                            self.update_action(0)
-                    else:
+                    elif self.frame_index:
                         if self.direction == 1:
                             ai_moving_right = True
                         else:
@@ -222,7 +239,7 @@ class Creature(pygame.sprite.Sprite):
                     self.update_action(1)#1: run
                     self.move_counter += 1
                     #update ai vision as the enemy moves
-                    self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery)
+                    self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
                     pygame.draw.rect(screen, RED, self.vision)
 
                     if self.move_counter > TILE_SIZE:
@@ -273,6 +290,71 @@ class Creature(pygame.sprite.Sprite):
         pygame.draw.rect(screen, WHITE, self.rect, 1)
 
 
+class World():
+    def __init__(self):
+        self.obstacle_list = []
+
+    def process_data(self, data):
+        #iterate through each value in level data file
+        for y, row in enumerate(data):
+            for x, tile in enumerate(row):
+                if tile >= 0:
+                    img = img_list[tile]
+                    img_rect = img.get_rect()
+                    img_rect.x = x * TILE_SIZE
+                    img_rect.y = y * TILE_SIZE
+                    tile_data = (img, img_rect)
+                    #these images are obstacles
+                    if tile >= 0 and tile <= 8:
+                        self.obstacle_list.append(tile_data)
+                    elif tile >= 9 and tile <= 10:
+                        water = Water(img, x * TILE_SIZE, y * TILE_SIZE)
+                        water_group.add(water)
+                    elif tile >= 11 and tile <= 14:
+                        deco = Decoration(img, x * TILE_SIZE, y * TILE_SIZE)
+                        decoration_group.add(deco)
+                    elif tile == 15:
+                        player = Creature("player", x * TILE_SIZE, y * TILE_SIZE, 1.65, 5, 10)
+                        health_bar = HealthBar(10, 40, player.health, player.health)
+                    #elif tile == 16:
+                        #enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 2, 10)
+                        #enemy_group.add(enemy)
+                    elif tile == 16:
+                        enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 4, 10)
+                        enemy_group.add(enemy)
+                    #elif tile == 18:
+                        #enemy = Creature("big_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 1, 20)
+                        #enemy_group.add(enemy)
+                    elif tile == 20:
+                        exit = Exit(img, x * TILE_SIZE, y * TILE_SIZE)
+                        exit_group.add(exit)
+        return player, health_bar
+    def draw(self):
+        for tile in self.obstacle_list:
+            screen.blit(tile[0], tile[1])
+
+class Decoration(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
+
+class Water(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
+
+class Exit(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
+
+
 class HealthBar():
     def __init__(self, x, y, health, max_health):
         self.x = x
@@ -301,9 +383,14 @@ class Bullet(pygame.sprite.Sprite):
     def update(self):
         #move bullet
         self.rect.x += (self.direction * self.speed)
+        pygame.draw.rect(screen, WHITE, self.rect, 1)
         #check if bullet has gone off screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
             self.kill()
+        #check if bullet hits wall
+        for tile in world.obstacle_list:
+            if tile[1].colliderect(self.rect):
+                self.kill()
         #check if bullet hits enemy
         for enemy in enemy_group:
             if pygame.sprite.spritecollide(enemy, bullet_group, False):
@@ -316,16 +403,21 @@ class Projectile(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self)
         self.speed = 3
         self.image = grenade_img
-        self.rect = pygame.rect.Rect((0,0), (6, 6))
+        self.rect = pygame.Rect(0, 0, 16, 16)
         self.rect.center = (x, y)
         self.direction = direction
 
     def update(self):
         #move projectile
         self.rect.x += (self.direction * self.speed)
+        pygame.draw.rect(screen, WHITE, self.rect, 1)
         #check if projectile has gone off screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
             self.kill()
+        #check if projectile hits wall
+        for tile in world.obstacle_list:
+            if tile[1].colliderect(self.rect):
+                self.kill()
         #check if projectile hits player
         if pygame.sprite.spritecollide(player, projectile_group, False):
             if player.alive:
@@ -337,26 +429,34 @@ class Projectile(pygame.sprite.Sprite):
 enemy_group = pygame.sprite.Group()
 bullet_group = pygame.sprite.Group()
 projectile_group = pygame.sprite.Group()
+decoration_group = pygame.sprite.Group()
+water_group = pygame.sprite.Group()
+exit_group = pygame.sprite.Group()
 
 
 
-player = Creature("player", 200, 200, 2, 5, 10)
-health_bar = HealthBar(10, 40, player.health, player.health)
-
-#enemy = Creature("reg_monster", 600, 266, 2, 2, 10)
-#enemy2 = Creature("ranged_monster", 650, 266, 2, 4, 10)
-enemy3 = Creature("big_monster", 720, 446, 2, 1, 20)
-#enemy_group.add(enemy)
-#enemy_group.add(enemy2)
-enemy_group.add(enemy3)
-
-
+#create empty tile list
+world_data = []
+for row in range(ROWS):
+    r =[-1] * COLS
+    world_data.append(r)
+#load in level data and create world
+with open(f'level{level}_data.csv', newline='') as csvfile:
+    reader = csv.reader(csvfile, delimiter=';')
+    for x, row in enumerate(reader):
+        for y, tile in enumerate(row):
+            world_data[x][y] = int(tile)
+world = World()
+player, health_bar = world.process_data(world_data)
 
 run = True
 while run:
     clock.tick(FPS)
 
+    #update background
     draw_bg()
+    #draw world map
+    world.draw()
 
     health_bar.draw(player.health)
     draw_text(f'HP: {player.health}', font, WHITE, 10, 3)
@@ -372,8 +472,14 @@ while run:
     #update and draw groups
     bullet_group.update()
     projectile_group.update()
+    water_group.update()
+    decoration_group.update()
+    exit_group.update()
     bullet_group.draw(screen)
     projectile_group.draw(screen)
+    decoration_group.draw(screen)
+    water_group.draw(screen)
+    exit_group.draw(screen)
 
     #update player actions
     if player.alive:
@@ -389,7 +495,7 @@ while run:
             player.update_action(0)#0: idle
         player.move(moving_left, moving_right)
     else:
-        player.move(False, False) #REMEMBER: make it so that after dying movement slows and then stops, like dying while jumping forward you won't just fall straight down
+        player.move(False, False)
 
     for event in pygame.event.get():
         #quit game
@@ -405,6 +511,8 @@ while run:
                 player.jump = True
             if event.key == pygame.K_ESCAPE:
                 run = False
+            if event.key == pygame.K_q:
+                player.health = 0
         #key releases
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_a:
