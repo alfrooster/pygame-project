@@ -1,10 +1,11 @@
 import pygame
 import os
 import random
+import csv
 
 pygame.init()
 
-SCREEN_WIDTH = 800
+SCREEN_WIDTH = 1200
 SCREEN_HEIGHT = int(SCREEN_WIDTH * 0.75)
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -20,6 +21,7 @@ ROWS = 16
 COLS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
 TILE_TYPES = 21
+level = 1
 
 #define player action variables
 moving_left = False
@@ -55,8 +57,6 @@ class Creature(pygame.sprite.Sprite):
         self.char_type = char_type
         self.speed = speed
         self.shoot_cooldown = 0
-        self.vomit_cooldown = 0
-        self.melee_cooldown = 0
         self.health = health
         self.max_health = self.health
         self.direction = 1
@@ -70,9 +70,15 @@ class Creature(pygame.sprite.Sprite):
         self.update_time = pygame.time.get_ticks()
         #ai specific variables
         self.move_counter = 0
-        self.vision = pygame.Rect(0, 0, 150, 20)
+        self.vision = pygame.Rect(0, 0, 300, 20)
+        if char_type == "big_monster":
+            self.punch = pygame.Rect(0, 0, 100, 70)
+        else:
+            self.punch = pygame.Rect(0, 0, 70, 70)
         self.idling = False
         self.idling_counter = 0
+        self.vomit_cooldown = 0
+        self.melee_cooldown = 0
 
         #load all images for the players
         animation_types = ['Idle', 'Run', 'Jump', 'Death', 'Attack'] 
@@ -151,13 +157,21 @@ class Creature(pygame.sprite.Sprite):
             bullet_group.add(bullet)
 
     def vomit(self):
-        if self.vomit_cooldown == 0:
-            self.vomit_cooldown = 200
-            projectile = Projectile(self.rect.centerx + (0.6 * self.rect.size[0] * -self.direction), self.rect.centery - 5, self.direction)
-            projectile_group.add(projectile)
-            self.update_action(4)
+        self.vomit_cooldown = 200
+        projectile = Projectile(self.rect.centerx + (0.6 * self.rect.size[0] * self.direction), self.rect.centery - 5, self.direction)
+        projectile_group.add(projectile)
+        self.update_action(4)
 
-    #def melee(self):
+    def melee(self):
+        self.melee_cooldown = 100
+        pygame.draw.rect(screen, RED, self.punch)
+        #if player rect collides with punch rect, lower player health
+        if self.punch.colliderect(player.rect):
+            if player.alive:
+                if self.char_type == "big_monster":
+                    player.health -= 3
+                else:
+                    player.health -= 1
 
 
     def ai(self):
@@ -170,11 +184,33 @@ class Creature(pygame.sprite.Sprite):
             #check if the ai is near the player
             if self.vision.colliderect(player.rect):
                 #stop running and face the player
-                self.update_action(4)#4: attack
                 if self.char_type == "ranged_monster":
-                    self.vomit()
-                #else:
-                    #self.melee()
+                    if self.vomit_cooldown == 0:
+                        self.update_action(4)#4: attack
+                        #choose which frame of the animation the attack activates
+                        if self.frame_index == 2:
+                            self.vomit()
+                    else:
+                        self.update_action(0)
+                else:
+                    #run toward player and melee, when in range                    
+                    self.punch.center = (self.rect.centerx + 35 * self.direction, self.rect.centery)
+                    if self.punch.colliderect(player.rect):
+                        if self.melee_cooldown == 0:
+                            self.update_action(4)#4: attack
+                            #choose which frame of the animation the attack activates
+                            if self.frame_index == 2:
+                                self.melee()
+                        else:
+                            self.update_action(0)
+                    else:
+                        if self.direction == 1:
+                            ai_moving_right = True
+                        else:
+                            ai_moving_right = False
+                        ai_moving_left = not ai_moving_right
+                        self.move(ai_moving_left, ai_moving_right)
+                        self.update_action(1)#1: run
             else:
                 if self.idling == False:
                     if self.direction == 1:
@@ -186,7 +222,7 @@ class Creature(pygame.sprite.Sprite):
                     self.update_action(1)#1: run
                     self.move_counter += 1
                     #update ai vision as the enemy moves
-                    self.vision.center = (self.rect.centerx + 75 * self.direction, self.rect.centery)
+                    self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery)
                     pygame.draw.rect(screen, RED, self.vision)
 
                     if self.move_counter > TILE_SIZE:
@@ -234,6 +270,7 @@ class Creature(pygame.sprite.Sprite):
 
     def draw(self):
         screen.blit(pygame.transform.flip(self.img, self.flip, False), self.rect)
+        pygame.draw.rect(screen, WHITE, self.rect, 1)
 
 
 class HealthBar():
@@ -306,11 +343,11 @@ projectile_group = pygame.sprite.Group()
 player = Creature("player", 200, 200, 2, 5, 10)
 health_bar = HealthBar(10, 40, player.health, player.health)
 
-enemy = Creature("reg_monster", 600, 266, 2, 2, 10)
-enemy2 = Creature("ranged_monster", 650, 266, 2, 4, 10)
-enemy3 = Creature("big_monster", 720, 446, 3, 1, 20)
-enemy_group.add(enemy)
-enemy_group.add(enemy2)
+#enemy = Creature("reg_monster", 600, 266, 2, 2, 10)
+#enemy2 = Creature("ranged_monster", 650, 266, 2, 4, 10)
+enemy3 = Creature("big_monster", 720, 446, 2, 1, 20)
+#enemy_group.add(enemy)
+#enemy_group.add(enemy2)
 enemy_group.add(enemy3)
 
 
@@ -332,20 +369,11 @@ while run:
         enemy.update()
         enemy.draw()
 
-    #rect viz
-    #pygame.draw.rect(screen, WHITE, player.rect, 1)
-
     #update and draw groups
     bullet_group.update()
     projectile_group.update()
     bullet_group.draw(screen)
     projectile_group.draw(screen)
-
-    #if big_monster.melee_cooldown == 0 and pygame.sprite.spritecollideany(player, big_monster):
-                #big_monster.melee_cooldown = 100
-                #if player.alive:
-                 #   player.health -= 10
-                #big_monster.update_action(4)
 
     #update player actions
     if player.alive:
