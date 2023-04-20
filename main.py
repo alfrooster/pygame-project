@@ -24,6 +24,7 @@ ROWS = 15
 COLS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
 TILE_TYPES = 21
+MAX_LEVELS = 1
 screen_scroll = 0
 bg_scroll = 0
 level = 1
@@ -74,6 +75,25 @@ def draw_bg():
         screen.blit(mountain_img, ((x * width) - bg_scroll * 0.3, SCREEN_HEIGHT - mountain_img.get_height() - 260))
         screen.blit(pine1_img, ((x * width) - bg_scroll * 0.35, SCREEN_HEIGHT - pine1_img.get_height() - 110))
         screen.blit(pine2_img, ((x * width) - bg_scroll * 0.4, SCREEN_HEIGHT - pine2_img.get_height() + 40))
+
+
+#function to reset level
+def reset_level():
+    enemy_group.empty()
+    bullet_group.empty()
+    projectile_group.empty()
+    decoration_group.empty()
+    water_group.empty()
+    exit_group.empty()
+
+    #create empty tile list
+    data = []
+    for row in range(ROWS):
+        r =[-1] * COLS
+        data.append(r)
+
+    return data
+
 
 class Creature(pygame.sprite.Sprite):
     def __init__(self, char_type, x, y, scale, speed, health):
@@ -180,6 +200,19 @@ class Creature(pygame.sprite.Sprite):
                     self.in_air = False
                     dy = tile[1].top - self.rect.bottom
 
+        #check for collision with water
+        if pygame.sprite.spritecollide(self, water_group, False):
+            self.health = 0
+
+        #check for collision with exit
+        level_complete = False
+        if pygame.sprite.spritecollide(self, exit_group, False):
+            level_complete = True
+
+        #check if fallen off the map
+        if self.rect.bottom > SCREEN_HEIGHT:
+            self.health = 0
+
         #check if going off the edges of the screen
         if self.char_type == 'player':
             if self.rect.left + dx < 0 or self.rect.right + dx > SCREEN_WIDTH:
@@ -196,7 +229,7 @@ class Creature(pygame.sprite.Sprite):
                 self.rect.x -= dx
                 screen_scroll = -dx
                 
-        return screen_scroll
+        return screen_scroll, level_complete
 
     def shoot(self):
         if self.shoot_cooldown == 0:
@@ -477,7 +510,7 @@ class Projectile(pygame.sprite.Sprite):
 #create buttons
 start_button = button.Button(SCREEN_WIDTH // 2 - 130, SCREEN_HEIGHT // 2 - 150, start_img, 1)
 exit_button = button.Button(SCREEN_WIDTH // 2 - 110, SCREEN_HEIGHT // 2 + 50, exit_img, 1)
-restart_button = button.Button(SCREEN_WIDTH // 2 - 130, SCREEN_HEIGHT // 2 - 150, restart_img, 1)
+restart_button = button.Button(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50, restart_img, 2)
 
 #create sprite groups
 enemy_group = pygame.sprite.Group()
@@ -503,6 +536,8 @@ with open(f'level{level}_data.csv', newline='') as csvfile:
 world = World()
 player, health_bar = world.process_data(world_data)
 
+delay = 0
+
 
 run = True
 while run:
@@ -515,7 +550,6 @@ while run:
             start_game = True
         if exit_button.draw(screen):
             run = False
-        #restart_button.draw(screen)
     else:
 
         #update background
@@ -561,10 +595,42 @@ while run:
                 player.update_action(1)#1: run
             else:
                 player.update_action(0)#0: idle
-            screen_scroll = player.move(moving_left, moving_right)
+            screen_scroll, level_complete = player.move(moving_left, moving_right)
             bg_scroll -= screen_scroll
+            #check if level is completed
+            if level_complete:
+                level += 1
+                bg_scroll = 0
+                if level <= MAX_LEVELS:
+                    world_data = reset_level()
+                    #load in level data and create world
+                    with open(f'level{level}_data.csv', newline='') as csvfile:
+                        reader = csv.reader(csvfile, delimiter=';')
+                        for x, row in enumerate(reader):
+                            for y, tile in enumerate(row):
+                                world_data[x][y] = int(tile)
+                    world = World()
+                    player, health_bar = world.process_data(world_data)
+                else:
+                    draw_text(f"I don't have more levels yet", font, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+                    delay += 1
+                    if delay >= 100:
+                        run = False
         else:
+            screen_scroll = 0
             player.move(False, False)
+            if restart_button.draw(screen):
+                bg_scroll = 0
+                world_data = reset_level()
+                #load in level data and create world
+                with open(f'level{level}_data.csv', newline='') as csvfile:
+                    reader = csv.reader(csvfile, delimiter=';')
+                    for x, row in enumerate(reader):
+                        for y, tile in enumerate(row):
+                            world_data[x][y] = int(tile)
+                world = World()
+                player, health_bar = world.process_data(world_data)
+
 
     for event in pygame.event.get():
         #quit game
@@ -579,7 +645,7 @@ while run:
             if (event.key == pygame.K_w or event.key == pygame.K_SPACE) and player.alive:
                 player.jump = True
             if event.key == pygame.K_ESCAPE:
-                run = False
+                start_game = False
             if event.key == pygame.K_q:
                 player.health = 0
         #key releases
