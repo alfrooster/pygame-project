@@ -2,6 +2,7 @@ import pygame
 import os
 import random
 import csv
+import button
 
 pygame.init()
 
@@ -17,11 +18,16 @@ FPS = 60
 
 #game variables
 GRAVITY = 0.75
+SCROLL_THL = 240
+SCROLL_THR = 420
 ROWS = 15
 COLS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
 TILE_TYPES = 21
+screen_scroll = 0
+bg_scroll = 0
 level = 1
+start_game = False
 
 #define player action variables
 moving_left = False
@@ -29,6 +35,11 @@ moving_right = False
 shoot = False
 
 #load images
+#button images
+start_img = pygame.image.load('img/start_btn.png').convert_alpha()
+exit_img = pygame.image.load('img/exit_btn.png').convert_alpha()
+restart_img = pygame.image.load('img/restart_btn.png').convert_alpha()
+#background
 pine1_img = pygame.image.load('img/Background/pine1.png').convert_alpha()
 pine2_img = pygame.image.load('img/Background/pine2.png').convert_alpha()
 mountain_img = pygame.image.load('img/Background/mountain.png').convert_alpha()
@@ -43,7 +54,7 @@ bullet_img = pygame.image.load('img/icons/bullet.png').convert_alpha()
 grenade_img = pygame.image.load('img/icons/grenade.png').convert_alpha()
 
 #define colors
-BG = (0, 0, 0)
+BG = (0, 0, 40)
 RED = (255, 0, 0)
 WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
@@ -57,10 +68,12 @@ def draw_text(text, font, text_col, x, y):
 
 def draw_bg():
     screen.fill(BG)
-    screen.blit(sky_img, (0, 0))
-    screen.blit(mountain_img, (0, SCREEN_HEIGHT - mountain_img.get_height() - 260))
-    screen.blit(pine1_img, (0, SCREEN_HEIGHT - pine1_img.get_height() - 110))
-    screen.blit(pine2_img, (0, SCREEN_HEIGHT - pine2_img.get_height() + 40))
+    width = sky_img.get_width()
+    for x in range(5):
+        screen.blit(sky_img, ((x * width) - bg_scroll * 0.1, 0))
+        screen.blit(mountain_img, ((x * width) - bg_scroll * 0.3, SCREEN_HEIGHT - mountain_img.get_height() - 260))
+        screen.blit(pine1_img, ((x * width) - bg_scroll * 0.35, SCREEN_HEIGHT - pine1_img.get_height() - 110))
+        screen.blit(pine2_img, ((x * width) - bg_scroll * 0.4, SCREEN_HEIGHT - pine2_img.get_height() + 40))
 
 class Creature(pygame.sprite.Sprite):
     def __init__(self, char_type, x, y, scale, speed, health):
@@ -71,6 +84,7 @@ class Creature(pygame.sprite.Sprite):
         self.shoot_cooldown = 0
         self.health = health
         self.max_health = self.health
+        self.kill_count = 0
         self.direction = 1
         self.vel_y = 0
         self.jump = False
@@ -91,6 +105,7 @@ class Creature(pygame.sprite.Sprite):
         self.idling_counter = 0
         self.vomit_cooldown = 0
         self.melee_cooldown = 0
+        self.kill_counted = False
 
         #load all images for the players
         animation_types = ['Idle', 'Run', 'Jump', 'Death', 'Attack'] 
@@ -123,6 +138,7 @@ class Creature(pygame.sprite.Sprite):
 
     def move(self, moving_left, moving_right):
         #reset movement variables
+        screen_scroll = 0
         dx = 0
         dy = 0
 
@@ -164,10 +180,23 @@ class Creature(pygame.sprite.Sprite):
                     self.in_air = False
                     dy = tile[1].top - self.rect.bottom
 
+        #check if going off the edges of the screen
+        if self.char_type == 'player':
+            if self.rect.left + dx < 0 or self.rect.right + dx > SCREEN_WIDTH:
+                dx = 0
 
         #update rectangle position
         self.rect.x += dx
         self.rect.y += dy
+
+        #update scroll based on player position
+        if self.char_type == 'player':
+            if (self.rect.right > SCREEN_WIDTH - SCROLL_THR and bg_scroll < (world.level_length * TILE_SIZE) - SCREEN_WIDTH)\
+                or (self.rect.left < SCROLL_THL and bg_scroll > abs(dx)):
+                self.rect.x -= dx
+                screen_scroll = -dx
+                
+        return screen_scroll
 
     def shoot(self):
         if self.shoot_cooldown == 0:
@@ -183,7 +212,7 @@ class Creature(pygame.sprite.Sprite):
 
     def melee(self):
         self.melee_cooldown = 100
-        pygame.draw.rect(screen, RED, self.punch)
+        pygame.draw.rect(screen, RED, self.punch, 1)
         #if player rect collides with punch rect, lower player health
         if self.punch.colliderect(player.rect):
             if player.alive:
@@ -240,7 +269,7 @@ class Creature(pygame.sprite.Sprite):
                     self.move_counter += 1
                     #update ai vision as the enemy moves
                     self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
-                    pygame.draw.rect(screen, RED, self.vision)
+                    pygame.draw.rect(screen, RED, self.vision, 1)
 
                     if self.move_counter > TILE_SIZE:
                         self.direction *= -1
@@ -249,6 +278,9 @@ class Creature(pygame.sprite.Sprite):
                     self.idling_counter -= 1
                     if self.idling_counter <= 0:
                         self.idling = False
+
+        #scroll
+        self.rect.x += screen_scroll
    
         
     def update_animation(self):
@@ -284,6 +316,9 @@ class Creature(pygame.sprite.Sprite):
             self.speed = 0
             self.alive = False
             self.update_action(3)
+            if self.char_type != 'player' and self.kill_counted == False:
+                player.kill_count += 1
+                self.kill_counted = True
 
     def draw(self):
         screen.blit(pygame.transform.flip(self.img, self.flip, False), self.rect)
@@ -295,6 +330,7 @@ class World():
         self.obstacle_list = []
 
     def process_data(self, data):
+        self.level_length = len(data[0])
         #iterate through each value in level data file
         for y, row in enumerate(data):
             for x, tile in enumerate(row):
@@ -316,12 +352,12 @@ class World():
                     elif tile == 15:
                         player = Creature("player", x * TILE_SIZE, y * TILE_SIZE, 1.65, 5, 10)
                         health_bar = HealthBar(10, 40, player.health, player.health)
-                    #elif tile == 16:
-                        #enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 2, 10)
-                        #enemy_group.add(enemy)
                     elif tile == 16:
-                        enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 4, 10)
+                        enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 2, 10)
                         enemy_group.add(enemy)
+                    #elif tile == 16:
+                        #enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 4, 10)
+                        #enemy_group.add(enemy)
                     #elif tile == 18:
                         #enemy = Creature("big_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 1, 20)
                         #enemy_group.add(enemy)
@@ -331,7 +367,9 @@ class World():
         return player, health_bar
     def draw(self):
         for tile in self.obstacle_list:
+            tile[1][0] += screen_scroll
             screen.blit(tile[0], tile[1])
+
 
 class Decoration(pygame.sprite.Sprite):
     def __init__(self, img, x, y):
@@ -340,12 +378,20 @@ class Decoration(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
 
+    def update(self):
+        self.rect.x += screen_scroll
+
+
 class Water(pygame.sprite.Sprite):
     def __init__(self, img, x, y):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = self.image.get_rect()
         self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
+    
+    def update(self):
+        self.rect.x += screen_scroll
+
 
 class Exit(pygame.sprite.Sprite):
     def __init__(self, img, x, y):
@@ -353,6 +399,9 @@ class Exit(pygame.sprite.Sprite):
         self.image = img
         self.rect = self.image.get_rect()
         self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
+    
+    def update(self):
+        self.rect.x += screen_scroll
 
 
 class HealthBar():
@@ -382,7 +431,7 @@ class Bullet(pygame.sprite.Sprite):
 
     def update(self):
         #move bullet
-        self.rect.x += (self.direction * self.speed)
+        self.rect.x += (self.direction * self.speed) + screen_scroll
         pygame.draw.rect(screen, WHITE, self.rect, 1)
         #check if bullet has gone off screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
@@ -409,7 +458,7 @@ class Projectile(pygame.sprite.Sprite):
 
     def update(self):
         #move projectile
-        self.rect.x += (self.direction * self.speed)
+        self.rect.x += (self.direction * self.speed) + screen_scroll
         pygame.draw.rect(screen, WHITE, self.rect, 1)
         #check if projectile has gone off screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
@@ -424,6 +473,11 @@ class Projectile(pygame.sprite.Sprite):
                 player.health -= 1
                 self.kill()
 
+
+#create buttons
+start_button = button.Button(SCREEN_WIDTH // 2 - 130, SCREEN_HEIGHT // 2 - 150, start_img, 1)
+exit_button = button.Button(SCREEN_WIDTH // 2 - 110, SCREEN_HEIGHT // 2 + 50, exit_img, 1)
+restart_button = button.Button(SCREEN_WIDTH // 2 - 130, SCREEN_HEIGHT // 2 - 150, restart_img, 1)
 
 #create sprite groups
 enemy_group = pygame.sprite.Group()
@@ -449,53 +503,68 @@ with open(f'level{level}_data.csv', newline='') as csvfile:
 world = World()
 player, health_bar = world.process_data(world_data)
 
+
 run = True
 while run:
     clock.tick(FPS)
 
-    #update background
-    draw_bg()
-    #draw world map
-    world.draw()
-
-    health_bar.draw(player.health)
-    draw_text(f'HP: {player.health}', font, WHITE, 10, 3)
-
-    player.update()
-    player.draw()
-
-    for enemy in enemy_group:
-        enemy.ai()
-        enemy.update()
-        enemy.draw()
-
-    #update and draw groups
-    bullet_group.update()
-    projectile_group.update()
-    water_group.update()
-    decoration_group.update()
-    exit_group.update()
-    bullet_group.draw(screen)
-    projectile_group.draw(screen)
-    decoration_group.draw(screen)
-    water_group.draw(screen)
-    exit_group.draw(screen)
-
-    #update player actions
-    if player.alive:
-        if shoot:
-            player.shoot()
-        if player.in_air:
-            player.update_action(2)#2: jump
-        elif shoot and player.in_air == False and moving_left == False and moving_right == False:
-            player.update_action(4)#4: attack
-        elif moving_left or moving_right:
-            player.update_action(1)#1: run
-        else:
-            player.update_action(0)#0: idle
-        player.move(moving_left, moving_right)
+    if start_game == False:
+        #draw menu
+        screen.fill(BG)
+        if start_button.draw(screen):
+            start_game = True
+        if exit_button.draw(screen):
+            run = False
+        #restart_button.draw(screen)
     else:
-        player.move(False, False)
+
+        #update background
+        draw_bg()
+        #draw world map
+        world.draw()
+
+        health_bar.draw(player.health)
+        draw_text(f'HP: {player.health}', font, WHITE, 10, 3)
+
+        enemy_count = len(enemy_group)
+        draw_text(f'Kills: {player.kill_count}/{enemy_count}', font, WHITE, SCREEN_WIDTH - 130, 3)
+
+        player.update()
+        player.draw()
+
+        for enemy in enemy_group:
+            enemy.ai()
+            enemy.update()
+            enemy.draw()
+
+        #update and draw groups
+        bullet_group.update()
+        projectile_group.update()
+        water_group.update()
+        decoration_group.update()
+        exit_group.update()
+        bullet_group.draw(screen)
+        projectile_group.draw(screen)
+        decoration_group.draw(screen)
+        water_group.draw(screen)
+        exit_group.draw(screen)
+
+        #update player actions
+        if player.alive:
+            if shoot:
+                player.shoot()
+            if player.in_air:
+                player.update_action(2)#2: jump
+            elif shoot and player.in_air == False and moving_left == False and moving_right == False:
+                player.update_action(4)#4: attack
+            elif moving_left or moving_right:
+                player.update_action(1)#1: run
+            else:
+                player.update_action(0)#0: idle
+            screen_scroll = player.move(moving_left, moving_right)
+            bg_scroll -= screen_scroll
+        else:
+            player.move(False, False)
 
     for event in pygame.event.get():
         #quit game
