@@ -3,7 +3,9 @@ import os
 import random
 import csv
 import button
+from pygame import mixer
 
+mixer.init()
 pygame.init()
 
 SCREEN_WIDTH = 800
@@ -29,11 +31,23 @@ screen_scroll = 0
 bg_scroll = 0
 level = 1
 start_game = False
+start_intro = False
 
 #define player action variables
 moving_left = False
 moving_right = False
 shoot = False
+
+#load music and sounds
+pygame.mixer.music.load('audio/music2.mp3')
+pygame.mixer.music.set_volume(0.3)
+pygame.mixer.music.play(-1, 0.0, 5000)
+jump_fx = pygame.mixer.Sound('audio/jump.wav')
+jump_fx.set_volume(0.5)
+shot_fx = pygame.mixer.Sound('audio/shot.wav')
+shot_fx.set_volume(0.5)
+grenade_fx = pygame.mixer.Sound('audio/grenade.wav')
+grenade_fx.set_volume(0.5)
 
 #load images
 #button images
@@ -59,6 +73,8 @@ BG = (0, 0, 40)
 RED = (255, 0, 0)
 WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
+PINK = (235, 65, 54)
+BLACK = (0, 0, 0)
 
 #define font
 font = pygame.font.SysFont('Times New Roman', 30)
@@ -179,18 +195,23 @@ class Creature(pygame.sprite.Sprite):
 
         #become newton and invent gravity
         self.vel_y += GRAVITY
-        if self.vel_y > 11:
+        if self.vel_y > 10:
             self.vel_y
         dy += self.vel_y
 
         #check for collision
         for tile in world.obstacle_list:
+            pygame.draw.rect(screen, WHITE, tile[1], 1)
             #check collision in the x direction
-            if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
+            if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height - 0.1):
                 dx = 0
+                #if the ai has hit a wall then make it turn around
+                if self.char_type != 'player':
+                    self.direction *= -1
+                    self.move_counter = 0
             #same in y direction
             if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.width, self.height):
-                #check if below the gound, i.e. jumping
+                #check if below the ground, i.e. jumping
                 if self.vel_y < 0:
                     self.vel_y = 0
                     dy = tile[1].bottom - self.rect.top
@@ -236,12 +257,14 @@ class Creature(pygame.sprite.Sprite):
             self.shoot_cooldown = 10
             bullet = Bullet(self.rect.centerx + (0.6 * self.rect.size[0] * self.direction), self.rect.centery - 3, self.direction)
             bullet_group.add(bullet)
+            shot_fx.play()
 
     def vomit(self):
         self.vomit_cooldown = 200
         projectile = Projectile(self.rect.centerx + (0.6 * self.rect.size[0] * self.direction), self.rect.centery - 5, self.direction)
         projectile_group.add(projectile)
         self.update_action(4)
+        grenade_fx.play()
 
     def melee(self):
         self.melee_cooldown = 100
@@ -266,6 +289,11 @@ class Creature(pygame.sprite.Sprite):
             if self.vision.colliderect(player.rect):
                 #don't start idling when player is in vision
                 self.idling = False
+                #flip the image if facing left
+                if self.direction == 1:
+                    self.flip = False
+                elif self.direction == -1:
+                    self.flip = True
                 if self.char_type == "ranged_monster":
                     #start vomiting toward where currently facing
                     if self.vomit_cooldown == 0:
@@ -282,7 +310,7 @@ class Creature(pygame.sprite.Sprite):
                             #choose which frame of the animation the attack activates
                             if self.frame_index == 2:
                                 self.melee()
-                    elif self.frame_index:
+                    else:
                         if self.direction == 1:
                             ai_moving_right = True
                         else:
@@ -290,6 +318,9 @@ class Creature(pygame.sprite.Sprite):
                         ai_moving_left = not ai_moving_right
                         self.move(ai_moving_left, ai_moving_right)
                         self.update_action(1)#1: run
+                        #update ai vision as the enemy moves
+                        self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
+                        pygame.draw.rect(screen, RED, self.vision, 1)
             else:
                 if self.idling == False:
                     if self.direction == 1:
@@ -465,7 +496,7 @@ class Bullet(pygame.sprite.Sprite):
     def update(self):
         #move bullet
         self.rect.x += (self.direction * self.speed) + screen_scroll
-        pygame.draw.rect(screen, WHITE, self.rect, 1)
+        ##pygame.draw.rect(screen, WHITE, self.rect, 1)
         #check if bullet has gone off screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
             self.kill()
@@ -492,7 +523,7 @@ class Projectile(pygame.sprite.Sprite):
     def update(self):
         #move projectile
         self.rect.x += (self.direction * self.speed) + screen_scroll
-        pygame.draw.rect(screen, WHITE, self.rect, 1)
+        ##pygame.draw.rect(screen, WHITE, self.rect, 1)
         #check if projectile has gone off screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
             self.kill()
@@ -505,6 +536,35 @@ class Projectile(pygame.sprite.Sprite):
             if player.alive:
                 player.health -= 1
                 self.kill()
+
+
+class ScreenFade():
+    def __init__(self, direction, color, speed):
+        self.direction = direction
+        self.color = color
+        self.speed = speed
+        self.fade_counter = 0
+
+    def fade(self):
+        fade_complete = False
+        self.fade_counter += self.speed
+        if self.direction == 1:#whole screen fade
+            pygame.draw.rect(screen, self.color, (0 - self.fade_counter, 0, SCREEN_WIDTH // 2, SCREEN_HEIGHT))
+            pygame.draw.rect(screen, self.color, (SCREEN_WIDTH // 2 + self.fade_counter, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
+            pygame.draw.rect(screen, self.color, (0, 0 - self.fade_counter, SCREEN_WIDTH, SCREEN_HEIGHT // 2))
+            pygame.draw.rect(screen, self.color, (0, SCREEN_HEIGHT // 2 + self.fade_counter, SCREEN_WIDTH, SCREEN_HEIGHT))
+
+        if self.direction == 2:#vertical screen fade down
+            pygame.draw.rect(screen, self.color, (0, 0, SCREEN_WIDTH, 0 + self.fade_counter))
+        if self.fade_counter >= SCREEN_WIDTH:
+            fade_complete = True
+
+        return fade_complete
+
+
+#create screen fades
+intro_fade = ScreenFade(1, BLACK, 4)
+death_fade = ScreenFade(2, PINK, 4)
 
 
 #create buttons
@@ -548,6 +608,7 @@ while run:
         screen.fill(BG)
         if start_button.draw(screen):
             start_game = True
+            start_intro = True
         if exit_button.draw(screen):
             run = False
     else:
@@ -583,6 +644,12 @@ while run:
         water_group.draw(screen)
         exit_group.draw(screen)
 
+        #show intro
+        if start_intro:
+            if intro_fade.fade():
+                start_intro = False
+                intro_fade.fade_counter = 0
+
         #update player actions
         if player.alive:
             if shoot:
@@ -599,6 +666,7 @@ while run:
             bg_scroll -= screen_scroll
             #check if level is completed
             if level_complete:
+                start_intro = True
                 level += 1
                 bg_scroll = 0
                 if level <= MAX_LEVELS:
@@ -619,17 +687,20 @@ while run:
         else:
             screen_scroll = 0
             player.move(False, False)
-            if restart_button.draw(screen):
-                bg_scroll = 0
-                world_data = reset_level()
-                #load in level data and create world
-                with open(f'level{level}_data.csv', newline='') as csvfile:
-                    reader = csv.reader(csvfile, delimiter=';')
-                    for x, row in enumerate(reader):
-                        for y, tile in enumerate(row):
-                            world_data[x][y] = int(tile)
-                world = World()
-                player, health_bar = world.process_data(world_data)
+            if death_fade.fade():
+                if restart_button.draw(screen):
+                    death_fade.fade_counter = 0
+                    start_intro = True
+                    bg_scroll = 0
+                    world_data = reset_level()
+                    #load in level data and create world
+                    with open(f'level{level}_data.csv', newline='') as csvfile:
+                        reader = csv.reader(csvfile, delimiter=';')
+                        for x, row in enumerate(reader):
+                            for y, tile in enumerate(row):
+                                world_data[x][y] = int(tile)
+                    world = World()
+                    player, health_bar = world.process_data(world_data)
 
 
     for event in pygame.event.get():
@@ -644,10 +715,9 @@ while run:
                 moving_right = True
             if (event.key == pygame.K_w or event.key == pygame.K_SPACE) and player.alive:
                 player.jump = True
+                jump_fx.play()
             if event.key == pygame.K_ESCAPE:
-                start_game = False
-            if event.key == pygame.K_q:
-                player.health = 0
+                run = False
         #key releases
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_a:
