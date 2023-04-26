@@ -8,7 +8,7 @@ from pygame import mixer
 mixer.init()
 pygame.init()
 
-SCREEN_WIDTH = 800
+SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = int(SCREEN_WIDTH * 0.75)
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -20,12 +20,12 @@ FPS = 60
 
 #game variables
 GRAVITY = 0.75
-SCROLL_THL = 240
-SCROLL_THR = 420
+SCROLL_THL = 300
+SCROLL_THR = 600
 ROWS = 15
 COLS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
-TILE_TYPES = 21
+TILE_TYPES = 48
 MAX_LEVELS = 1
 screen_scroll = 0
 bg_scroll = 0
@@ -39,15 +39,25 @@ moving_right = False
 shoot = False
 
 #load music and sounds
-pygame.mixer.music.load('audio/music2.mp3')
-pygame.mixer.music.set_volume(0.3)
+pygame.mixer.music.load('audio/music.wav')
+pygame.mixer.music.set_volume(0.4)
 pygame.mixer.music.play(-1, 0.0, 5000)
-jump_fx = pygame.mixer.Sound('audio/jump.wav')
-jump_fx.set_volume(0.5)
 shot_fx = pygame.mixer.Sound('audio/shot.wav')
-shot_fx.set_volume(0.5)
-grenade_fx = pygame.mixer.Sound('audio/grenade.wav')
-grenade_fx.set_volume(0.5)
+shot_fx.set_volume(0.4)
+jump_fx = pygame.mixer.Sound('audio/jump.wav')
+jump_fx.set_volume(0.4)
+vomit_fx = pygame.mixer.Sound('audio/vomit.wav')
+vomit_fx.set_volume(0.5)
+melee_hit_fx = pygame.mixer.Sound('audio/melee_hit.wav')
+melee_hit_fx.set_volume(0.4)
+splash_fx = pygame.mixer.Sound('audio/splash.wav')
+splash_fx.set_volume(0.5)
+bullet_hit_fx = pygame.mixer.Sound('audio/bullet_hit.wav')
+bullet_hit_fx.set_volume(0.5)
+saw_fx = pygame.mixer.Sound('audio/saw.wav')
+saw_fx.set_volume(0.5)
+laser_fx = pygame.mixer.Sound('audio/laser.wav')
+laser_fx.set_volume(0.5)
 
 #load images
 #button images
@@ -55,10 +65,8 @@ start_img = pygame.image.load('img/start_btn.png').convert_alpha()
 exit_img = pygame.image.load('img/exit_btn.png').convert_alpha()
 restart_img = pygame.image.load('img/restart_btn.png').convert_alpha()
 #background
-pine1_img = pygame.image.load('img/Background/pine1.png').convert_alpha()
-pine2_img = pygame.image.load('img/Background/pine2.png').convert_alpha()
-mountain_img = pygame.image.load('img/Background/mountain.png').convert_alpha()
-sky_img = pygame.image.load('img/Background/sky_cloud.png').convert_alpha()
+ship_img = pygame.image.load('img/Background/ship_interior.png').convert_alpha()
+ship_img = pygame.transform.scale(ship_img, (int(ship_img.get_width() * 2), int(ship_img.get_height() * 2)))
 #store tiles in a list
 img_list = []
 for x in range(TILE_TYPES):
@@ -66,7 +74,7 @@ for x in range(TILE_TYPES):
     img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
     img_list.append(img)
 bullet_img = pygame.image.load('img/icons/bullet.png').convert_alpha()
-grenade_img = pygame.image.load('img/icons/grenade.png').convert_alpha()
+vomit_img = pygame.image.load('img/icons/vomit.png').convert_alpha()
 
 #define colors
 BG = (0, 0, 40)
@@ -77,7 +85,7 @@ PINK = (235, 65, 54)
 BLACK = (0, 0, 0)
 
 #define font
-font = pygame.font.SysFont('Times New Roman', 30)
+font = pygame.font.SysFont('Eras Demi ITC', 48)
 
 def draw_text(text, font, text_col, x, y):
     img = font.render(text, True, text_col)
@@ -85,12 +93,10 @@ def draw_text(text, font, text_col, x, y):
 
 def draw_bg():
     screen.fill(BG)
-    width = sky_img.get_width()
-    for x in range(5):
-        screen.blit(sky_img, ((x * width) - bg_scroll * 0.1, 0))
-        screen.blit(mountain_img, ((x * width) - bg_scroll * 0.3, SCREEN_HEIGHT - mountain_img.get_height() - 260))
-        screen.blit(pine1_img, ((x * width) - bg_scroll * 0.35, SCREEN_HEIGHT - pine1_img.get_height() - 110))
-        screen.blit(pine2_img, ((x * width) - bg_scroll * 0.4, SCREEN_HEIGHT - pine2_img.get_height() + 40))
+    width = ship_img.get_width()
+    for x in range(7):
+        screen.blit(ship_img, ((x * width) - bg_scroll, 0))
+    #TODO: space stars in the window parallax
 
 
 #function to reset level
@@ -99,7 +105,8 @@ def reset_level():
     bullet_group.empty()
     projectile_group.empty()
     decoration_group.empty()
-    water_group.empty()
+    trap_group.empty()
+    saw_group.empty()
     exit_group.empty()
 
     #create empty tile list
@@ -118,6 +125,7 @@ class Creature(pygame.sprite.Sprite):
         self.char_type = char_type
         self.speed = speed
         self.shoot_cooldown = 0
+        self.trap_cooldown = 0
         self.health = health
         self.max_health = self.health
         self.kill_count = 0
@@ -171,6 +179,8 @@ class Creature(pygame.sprite.Sprite):
             self.vomit_cooldown -= 1
         if self.melee_cooldown > 0:
             self.melee_cooldown -= 1
+        if self.trap_cooldown > 0:
+            self.trap_cooldown -= 1
 
     def move(self, moving_left, moving_right):
         #reset movement variables
@@ -189,7 +199,7 @@ class Creature(pygame.sprite.Sprite):
             self.direction = 1
         
         if self.jump == True and self.in_air == False:
-            self.vel_y = -12
+            self.vel_y = -15
             self.jump = False
             self.in_air = True
 
@@ -201,7 +211,7 @@ class Creature(pygame.sprite.Sprite):
 
         #check for collision
         for tile in world.obstacle_list:
-            pygame.draw.rect(screen, WHITE, tile[1], 1)
+            ##pygame.draw.rect(screen, WHITE, tile[1], 1)
             #check collision in the x direction
             if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height - 0.1):
                 dx = 0
@@ -221,9 +231,17 @@ class Creature(pygame.sprite.Sprite):
                     self.in_air = False
                     dy = tile[1].top - self.rect.bottom
 
-        #check for collision with water
-        if pygame.sprite.spritecollide(self, water_group, False):
-            self.health = 0
+        #check for collision with traps
+        if pygame.sprite.spritecollide(self, trap_group, False):
+            if self.trap_cooldown == 0:
+                self.trap_cooldown = 60
+                laser_fx.play()
+                self.health -= 5
+        if pygame.sprite.spritecollide(self, saw_group, False):
+            if self.trap_cooldown == 0:
+                self.trap_cooldown = 60
+                saw_fx.play()
+                self.health -= 5
 
         #check for collision with exit
         level_complete = False
@@ -264,13 +282,14 @@ class Creature(pygame.sprite.Sprite):
         projectile = Projectile(self.rect.centerx + (0.6 * self.rect.size[0] * self.direction), self.rect.centery - 5, self.direction)
         projectile_group.add(projectile)
         self.update_action(4)
-        grenade_fx.play()
+        vomit_fx.play()
 
     def melee(self):
         self.melee_cooldown = 100
-        pygame.draw.rect(screen, RED, self.punch, 1)
+        ##pygame.draw.rect(screen, RED, self.punch, 1)
         #if player rect collides with punch rect, lower player health
         if self.punch.colliderect(player.rect):
+            melee_hit_fx.play()
             if player.alive:
                 if self.char_type == "big_monster":
                     player.health -= 3
@@ -320,7 +339,7 @@ class Creature(pygame.sprite.Sprite):
                         self.update_action(1)#1: run
                         #update ai vision as the enemy moves
                         self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
-                        pygame.draw.rect(screen, RED, self.vision, 1)
+                        ##pygame.draw.rect(screen, RED, self.vision, 1)
             else:
                 if self.idling == False:
                     if self.direction == 1:
@@ -333,7 +352,7 @@ class Creature(pygame.sprite.Sprite):
                     self.move_counter += 1
                     #update ai vision as the enemy moves
                     self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
-                    pygame.draw.rect(screen, RED, self.vision, 1)
+                    ##pygame.draw.rect(screen, RED, self.vision, 1)
 
                     if self.move_counter > TILE_SIZE:
                         self.direction *= -1
@@ -386,7 +405,7 @@ class Creature(pygame.sprite.Sprite):
 
     def draw(self):
         screen.blit(pygame.transform.flip(self.img, self.flip, False), self.rect)
-        pygame.draw.rect(screen, WHITE, self.rect, 1)
+        ##pygame.draw.rect(screen, WHITE, self.rect, 1)
 
 
 class World():
@@ -405,27 +424,30 @@ class World():
                     img_rect.y = y * TILE_SIZE
                     tile_data = (img, img_rect)
                     #these images are obstacles
-                    if tile >= 0 and tile <= 8:
+                    if tile >= 0 and tile <= 33:
                         self.obstacle_list.append(tile_data)
-                    elif tile >= 9 and tile <= 10:
-                        water = Water(img, x * TILE_SIZE, y * TILE_SIZE)
-                        water_group.add(water)
-                    elif tile >= 11 and tile <= 14:
+                    elif tile == 34:
+                        saw = Saw(img, x * TILE_SIZE, y * TILE_SIZE)
+                        saw_group.add(saw)
+                    elif tile == 35:
+                        trap = Trap(img, x * TILE_SIZE, y * TILE_SIZE)
+                        trap_group.add(trap)
+                    elif tile >= 36 and tile <= 41:
                         deco = Decoration(img, x * TILE_SIZE, y * TILE_SIZE)
                         decoration_group.add(deco)
-                    elif tile == 15:
-                        player = Creature("player", x * TILE_SIZE, y * TILE_SIZE, 1.65, 5, 10)
-                        health_bar = HealthBar(10, 40, player.health, player.health)
-                    elif tile == 16:
-                        enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 2, 10)
+                    elif tile == 42:
+                        player = Creature("player", x * TILE_SIZE, y * TILE_SIZE, 3, 5, 10)
+                        health_bar = HealthBar(16, 70, player.health, player.health)
+                    elif tile == 43:
+                        enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 3, 2, 10)
                         enemy_group.add(enemy)
-                    #elif tile == 16:
-                        #enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 4, 10)
-                        #enemy_group.add(enemy)
-                    #elif tile == 18:
-                        #enemy = Creature("big_monster", x * TILE_SIZE, y * TILE_SIZE, 2, 1, 20)
-                        #enemy_group.add(enemy)
-                    elif tile == 20:
+                    elif tile == 44:
+                        enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 3, 4, 10)
+                        enemy_group.add(enemy)
+                    elif tile == 45:
+                        enemy = Creature("big_monster", x * TILE_SIZE, y * TILE_SIZE, 3, 1, 20)
+                        enemy_group.add(enemy)
+                    elif tile >= 46 and tile <= 47:
                         exit = Exit(img, x * TILE_SIZE, y * TILE_SIZE)
                         exit_group.add(exit)
         return player, health_bar
@@ -446,12 +468,24 @@ class Decoration(pygame.sprite.Sprite):
         self.rect.x += screen_scroll
 
 
-class Water(pygame.sprite.Sprite):
+class Trap(pygame.sprite.Sprite):
     def __init__(self, img, x, y):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = self.image.get_rect()
         self.rect.midtop = (x + TILE_SIZE // 2, y + (TILE_SIZE - self.image.get_height()))
+    
+    def update(self):
+        self.rect.x += screen_scroll
+
+
+class Saw(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.midright = (x + TILE_SIZE, y + TILE_SIZE // 2 + 5)
+        self.rect.height = self.image.get_height() - 10
     
     def update(self):
         self.rect.x += screen_scroll
@@ -480,16 +514,16 @@ class HealthBar():
         self.health = health
         ratio = self.health / self.max_health
 
-        pygame.draw.rect(screen, RED, (self.x, self.y, 150, 20))
-        pygame.draw.rect(screen, GREEN, (self.x, self.y, ratio * 150, 20))
+        pygame.draw.rect(screen, RED, (self.x, self.y, 275, 40))
+        pygame.draw.rect(screen, GREEN, (self.x, self.y, ratio * 275, 40))
 
 
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, x, y, direction):
         pygame.sprite.Sprite.__init__(self)
-        self.speed = 10
-        self.image = bullet_img
-        self.rect = pygame.Rect(0, 0, 6, 6)
+        self.speed = 25
+        self.image = pygame.transform.scale(bullet_img, (12, 12))
+        self.rect = pygame.Rect(0, 0, 12, 12)
         self.rect.center = (x, y)
         self.direction = direction
 
@@ -508,6 +542,7 @@ class Bullet(pygame.sprite.Sprite):
         for enemy in enemy_group:
             if pygame.sprite.spritecollide(enemy, bullet_group, False):
                 if enemy.alive:
+                    bullet_hit_fx.play()
                     enemy.health -= 1
                     self.kill()
 
@@ -515,8 +550,8 @@ class Projectile(pygame.sprite.Sprite):
     def __init__(self, x, y, direction):
         pygame.sprite.Sprite.__init__(self)
         self.speed = 3
-        self.image = grenade_img
-        self.rect = pygame.Rect(0, 0, 16, 16)
+        self.image = pygame.transform.scale(vomit_img, (32, 32))
+        self.rect = self.image.get_rect()
         self.rect.center = (x, y)
         self.direction = direction
 
@@ -530,10 +565,12 @@ class Projectile(pygame.sprite.Sprite):
         #check if projectile hits wall
         for tile in world.obstacle_list:
             if tile[1].colliderect(self.rect):
+                splash_fx.play()
                 self.kill()
         #check if projectile hits player
         if pygame.sprite.spritecollide(player, projectile_group, False):
             if player.alive:
+                splash_fx.play()
                 player.health -= 1
                 self.kill()
 
@@ -556,15 +593,15 @@ class ScreenFade():
 
         if self.direction == 2:#vertical screen fade down
             pygame.draw.rect(screen, self.color, (0, 0, SCREEN_WIDTH, 0 + self.fade_counter))
-        if self.fade_counter >= SCREEN_WIDTH:
+        if self.fade_counter >= SCREEN_HEIGHT + 50:
             fade_complete = True
 
         return fade_complete
 
 
 #create screen fades
-intro_fade = ScreenFade(1, BLACK, 4)
-death_fade = ScreenFade(2, PINK, 4)
+intro_fade = ScreenFade(1, BLACK, 8)
+death_fade = ScreenFade(2, PINK, 12)
 
 
 #create buttons
@@ -577,7 +614,8 @@ enemy_group = pygame.sprite.Group()
 bullet_group = pygame.sprite.Group()
 projectile_group = pygame.sprite.Group()
 decoration_group = pygame.sprite.Group()
-water_group = pygame.sprite.Group()
+trap_group = pygame.sprite.Group()
+saw_group = pygame.sprite.Group()
 exit_group = pygame.sprite.Group()
 
 
@@ -619,10 +657,10 @@ while run:
         world.draw()
 
         health_bar.draw(player.health)
-        draw_text(f'HP: {player.health}', font, WHITE, 10, 3)
+        draw_text(f'HP: {player.health}', font, WHITE, 16, 6)
 
         enemy_count = len(enemy_group)
-        draw_text(f'Kills: {player.kill_count}/{enemy_count}', font, WHITE, SCREEN_WIDTH - 130, 3)
+        draw_text(f'Kills: {player.kill_count}/{enemy_count}', font, WHITE, SCREEN_WIDTH - 270, 6)
 
         player.update()
         player.draw()
@@ -635,13 +673,15 @@ while run:
         #update and draw groups
         bullet_group.update()
         projectile_group.update()
-        water_group.update()
+        trap_group.update()
+        saw_group.update()
         decoration_group.update()
         exit_group.update()
         bullet_group.draw(screen)
         projectile_group.draw(screen)
         decoration_group.draw(screen)
-        water_group.draw(screen)
+        trap_group.draw(screen)
+        saw_group.draw(screen)
         exit_group.draw(screen)
 
         #show intro
@@ -714,8 +754,10 @@ while run:
             if event.key == pygame.K_d:
                 moving_right = True
             if (event.key == pygame.K_w or event.key == pygame.K_SPACE) and player.alive:
-                player.jump = True
                 jump_fx.play()
+                player.jump = True
+            if event.key == pygame.K_m:
+                shoot = True
             if event.key == pygame.K_ESCAPE:
                 run = False
         #key releases
@@ -724,8 +766,10 @@ while run:
                 moving_left = False
             if event.key == pygame.K_d:
                 moving_right = False
-            if event.key == pygame.K_w or pygame.K_SPACE:
+            if event.key == pygame.K_w or event.key == pygame.K_SPACE:
                 player.jump = False
+            if event.key == pygame.K_m:
+                shoot = False
         #mouse
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
