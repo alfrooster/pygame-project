@@ -26,12 +26,13 @@ ROWS = 15
 COLS = 150
 TILE_SIZE = SCREEN_HEIGHT // ROWS
 TILE_TYPES = 48
-MAX_LEVELS = 1
+MAX_LEVELS = 2
 screen_scroll = 0
 bg_scroll = 0
 level = 1
 start_game = False
 start_intro = False
+delay = 0
 
 #define player action variables
 moving_left = False
@@ -67,6 +68,8 @@ restart_img = pygame.image.load('img/restart_btn.png').convert_alpha()
 #background
 ship_img = pygame.image.load('img/Background/ship_interior.png').convert_alpha()
 ship_img = pygame.transform.scale(ship_img, (int(ship_img.get_width() * 2), int(ship_img.get_height() * 2)))
+stars_img = pygame.image.load('img/Background/stars.png').convert_alpha()
+stars_img = pygame.transform.scale(stars_img, (int(stars_img.get_width() * 2), int(stars_img.get_height() * 2)))
 #store tiles in a list
 img_list = []
 for x in range(TILE_TYPES):
@@ -95,7 +98,8 @@ def draw_bg():
     screen.fill(BG)
     width = ship_img.get_width()
     for x in range(7):
-        screen.blit(ship_img, ((x * width) - bg_scroll, 0))
+        screen.blit(stars_img, ((x * width) - bg_scroll * 0.8, 0))
+        screen.blit(ship_img, ((x * width) - bg_scroll * 0.9, 0))
     #TODO: space stars in the window parallax
 
 
@@ -140,11 +144,11 @@ class Creature(pygame.sprite.Sprite):
         self.update_time = pygame.time.get_ticks()
         #ai specific variables
         self.move_counter = 0
-        self.vision = pygame.Rect(0, 0, 300, 120)
+        self.vision = pygame.Rect(0, 0, 500, 120)
         if char_type == "big_monster":
-            self.punch = pygame.Rect(0, 0, 100, 70)
+            self.punch = pygame.Rect(0, 0, 170, 120)
         else:
-            self.punch = pygame.Rect(0, 0, 70, 70)
+            self.punch = pygame.Rect(0, 0, 120, 90)
         self.idling = False
         self.idling_counter = 0
         self.vomit_cooldown = 0
@@ -246,7 +250,12 @@ class Creature(pygame.sprite.Sprite):
         #check for collision with exit
         level_complete = False
         if pygame.sprite.spritecollide(self, exit_group, False):
-            level_complete = True
+            if self.kill_count >= 0.75 * len(enemy_group):
+                dx = 0
+                dy = 0
+                level_complete = True
+            else:
+                draw_text("You need to kill 75% of the enemies", font, WHITE, SCREEN_WIDTH // 3, SCREEN_HEIGHT // 2)
 
         #check if fallen off the map
         if self.rect.bottom > SCREEN_HEIGHT:
@@ -286,7 +295,6 @@ class Creature(pygame.sprite.Sprite):
 
     def melee(self):
         self.melee_cooldown = 100
-        ##pygame.draw.rect(screen, RED, self.punch, 1)
         #if player rect collides with punch rect, lower player health
         if self.punch.colliderect(player.rect):
             melee_hit_fx.play()
@@ -318,16 +326,17 @@ class Creature(pygame.sprite.Sprite):
                     if self.vomit_cooldown == 0:
                         self.update_action(4)#4: attack
                         #choose which frame of the animation the attack activates
-                        if self.frame_index == 2:
+                        if self.frame_index == 4:
                             self.vomit()
                 else:
                     #run toward player and melee, when in range                    
                     self.punch.center = (self.rect.centerx + 35 * self.direction, self.rect.centery)
+                    ##pygame.draw.rect(screen, RED, self.punch, 1)
                     if self.punch.colliderect(player.rect):
                         if self.melee_cooldown == 0:
                             self.update_action(4)#4: attack
                             #choose which frame of the animation the attack activates
-                            if self.frame_index == 2:
+                            if self.frame_index == 4:
                                 self.melee()
                     else:
                         if self.direction == 1:
@@ -338,7 +347,7 @@ class Creature(pygame.sprite.Sprite):
                         self.move(ai_moving_left, ai_moving_right)
                         self.update_action(1)#1: run
                         #update ai vision as the enemy moves
-                        self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
+                        self.vision.center = (self.rect.centerx + 250 * self.direction, self.rect.centery - 45)
                         ##pygame.draw.rect(screen, RED, self.vision, 1)
             else:
                 if self.idling == False:
@@ -351,7 +360,7 @@ class Creature(pygame.sprite.Sprite):
                     self.update_action(1)#1: run
                     self.move_counter += 1
                     #update ai vision as the enemy moves
-                    self.vision.center = (self.rect.centerx + 150 * self.direction, self.rect.centery - 45)
+                    self.vision.center = (self.rect.centerx + 250 * self.direction, self.rect.centery - 45)
                     ##pygame.draw.rect(screen, RED, self.vision, 1)
 
                     if self.move_counter > TILE_SIZE:
@@ -439,13 +448,13 @@ class World():
                         player = Creature("player", x * TILE_SIZE, y * TILE_SIZE, 3, 5, 10)
                         health_bar = HealthBar(16, 70, player.health, player.health)
                     elif tile == 43:
-                        enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 3, 2, 10)
+                        enemy = Creature("reg_monster", x * TILE_SIZE, y * TILE_SIZE, 5, 2, 10)
                         enemy_group.add(enemy)
                     elif tile == 44:
-                        enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 3, 4, 10)
+                        enemy = Creature("ranged_monster", x * TILE_SIZE, y * TILE_SIZE, 4, 4, 10)
                         enemy_group.add(enemy)
                     elif tile == 45:
-                        enemy = Creature("big_monster", x * TILE_SIZE, y * TILE_SIZE, 3, 1, 20)
+                        enemy = Creature("big_monster", x * TILE_SIZE, y * TILE_SIZE, 4, 1, 20)
                         enemy_group.add(enemy)
                     elif tile >= 46 and tile <= 47:
                         exit = Exit(img, x * TILE_SIZE, y * TILE_SIZE)
@@ -602,6 +611,7 @@ class ScreenFade():
 #create screen fades
 intro_fade = ScreenFade(1, BLACK, 8)
 death_fade = ScreenFade(2, PINK, 12)
+end_fade = ScreenFade(2, BG, 4)
 
 
 #create buttons
@@ -634,7 +644,6 @@ with open(f'level{level}_data.csv', newline='') as csvfile:
 world = World()
 player, health_bar = world.process_data(world_data)
 
-delay = 0
 
 
 run = True
@@ -662,14 +671,6 @@ while run:
         enemy_count = len(enemy_group)
         draw_text(f'Kills: {player.kill_count}/{enemy_count}', font, WHITE, SCREEN_WIDTH - 270, 6)
 
-        player.update()
-        player.draw()
-
-        for enemy in enemy_group:
-            enemy.ai()
-            enemy.update()
-            enemy.draw()
-
         #update and draw groups
         bullet_group.update()
         projectile_group.update()
@@ -683,6 +684,14 @@ while run:
         trap_group.draw(screen)
         saw_group.draw(screen)
         exit_group.draw(screen)
+
+        for enemy in enemy_group:
+            enemy.ai()
+            enemy.update()
+            enemy.draw()
+
+        player.update()
+        player.draw()
 
         #show intro
         if start_intro:
@@ -706,10 +715,10 @@ while run:
             bg_scroll -= screen_scroll
             #check if level is completed
             if level_complete:
-                start_intro = True
                 level += 1
                 bg_scroll = 0
                 if level <= MAX_LEVELS:
+                    start_intro = True
                     world_data = reset_level()
                     #load in level data and create world
                     with open(f'level{level}_data.csv', newline='') as csvfile:
@@ -720,10 +729,11 @@ while run:
                     world = World()
                     player, health_bar = world.process_data(world_data)
                 else:
-                    draw_text(f"I don't have more levels yet", font, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-                    delay += 1
-                    if delay >= 100:
-                        run = False
+                    if end_fade.fade():
+                        draw_text("Thanks for playing", font, WHITE, SCREEN_WIDTH // 3, SCREEN_HEIGHT // 2)
+                        delay += 1
+                        if delay >= 240:
+                            run = False
         else:
             screen_scroll = 0
             player.move(False, False)
