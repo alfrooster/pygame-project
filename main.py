@@ -89,6 +89,7 @@ BLACK = (0, 0, 0)
 
 #define font
 font = pygame.font.SysFont('Eras Demi ITC', 48)
+font2 = pygame.font.SysFont('Sans Serif', 48)
 
 def draw_text(text, font, text_col, x, y):
     img = font.render(text, True, text_col)
@@ -100,8 +101,6 @@ def draw_bg():
     for x in range(7):
         screen.blit(stars_img, ((x * width) - bg_scroll * 0.8, 0))
         screen.blit(ship_img, ((x * width) - bg_scroll * 0.9, 0))
-    #TODO: space stars in the window parallax
-
 
 #function to reset level
 def reset_level():
@@ -658,6 +657,7 @@ while run:
             start_intro = True
         if exit_button.draw(screen):
             run = False
+        draw_text('LEFT: A    RIGHT: D    JUMP: W / SPACE    SHOOT: LEFT CLICK / M', font2, WHITE, 100, 120)
     else:
 
         #update background
