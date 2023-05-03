@@ -6,6 +6,8 @@ A-D to move left and right
 W / SPACEBAR to jump
 
 Left Click / M to shoot
+
+Esc to exit game
 ## Assets
 I followed this tutorial by Coding With Russ: https://www.youtube.com/playlist?list=PLjcN1EyupaQm20hlUE11y9y8EY2aXLpnv
 
