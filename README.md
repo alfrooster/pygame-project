@@ -7,9 +7,13 @@ W / SPACEBAR to jump
 
 Left Click / M to shoot
 
-Esc to exit game
+ESC to exit game
+
+The game opens in fullscreen
 ## Assets
-I followed this tutorial by Coding With Russ: https://www.youtube.com/playlist?list=PLjcN1EyupaQm20hlUE11y9y8EY2aXLpnv
+I followed this tutorial by Coding With Russ:
+
+https://www.youtube.com/playlist?list=PLjcN1EyupaQm20hlUE11y9y8EY2aXLpnv
 
 Assets used:
 

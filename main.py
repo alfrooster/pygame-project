@@ -11,7 +11,7 @@ pygame.init()
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = int(SCREEN_WIDTH * 0.75)
 
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
 pygame.display.set_caption('Game')
 
 #set framerate
